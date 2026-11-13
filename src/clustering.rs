@@ -6,6 +6,8 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClusteringConfig {
+    #[serde(default = "default_respect_human_corrections")]
+    pub respect_human_corrections: bool,
     /// Admission policy is independent from broad retrieval and v4 identity scores.
     #[serde(default)]
     pub admission: AdmissionConfig,
@@ -32,6 +34,9 @@ pub struct ClusteringConfig {
 fn default_auto_merge_threshold() -> f32 {
     0.85
 }
+fn default_respect_human_corrections() -> bool {
+    true
+}
 
 fn default_max_merge_passes() -> usize {
     0
@@ -40,6 +45,7 @@ fn default_max_merge_passes() -> usize {
 impl Default for ClusteringConfig {
     fn default() -> Self {
         Self {
+            respect_human_corrections: true,
             admission: AdmissionConfig::default(),
             same_project_threshold: 0.72,
             review_threshold: 0.56,
