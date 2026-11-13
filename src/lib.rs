@@ -5,6 +5,7 @@ pub mod deterministic;
 pub mod embeddings;
 pub mod evaluation;
 pub mod fingerprint;
+pub mod organizer;
 pub mod purity;
 pub mod scanner;
 pub mod sidecar;
