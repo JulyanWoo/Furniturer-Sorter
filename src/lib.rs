@@ -13,3 +13,5 @@ pub mod similarity;
 pub mod ui;
 
 pub mod purity;
+
+pub mod local_identity;
