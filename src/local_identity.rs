@@ -46,6 +46,115 @@ pub struct LocalEvidence {
 }
 pub type LocalEvidenceMap = HashMap<(usize, usize), LocalEvidence>;
 
+/// Bound verification work to broad nearest candidates, deduplicated by content SHA.
+/// No image path, timestamp or human label contributes to identity decisions.
+pub fn candidate_evidence(
+    images: &[ScannedImage],
+    signatures: &[Option<LocalSignature>],
+    pairs: &[crate::similarity::PairComparison],
+    cache: &CacheStore,
+    cancel: &Arc<AtomicBool>,
+) -> LocalEvidenceMap {
+    let mut first = HashMap::new();
+    let representatives: Vec<_> = images
+        .iter()
+        .enumerate()
+        .map(|(i, im)| {
+            *first
+                .entry(
+                    im.content_sha256
+                        .as_ref()
+                        .map(|h| format!("sha256:{h}"))
+                        .unwrap_or_else(|| im.stable_id()),
+                )
+                .or_insert(i)
+        })
+        .collect();
+    let mut scores: HashMap<(usize, usize), f32> = HashMap::new();
+    for p in pairs {
+        let a = representatives[p.i];
+        let b = representatives[p.j];
+        if a == b {
+            continue;
+        }
+        let d = &p.score.deterministic;
+        let score = p
+            .score
+            .combined
+            .max(0.5 * d.structure + 0.5 * d.partial_view);
+        scores
+            .entry((a.min(b), a.max(b)))
+            .and_modify(|s| *s = s.max(score))
+            .or_insert(score);
+    }
+    let mut neighbors = vec![Vec::new(); images.len()];
+    for (&(a, b), &s) in &scores {
+        neighbors[a].push((b, s));
+        neighbors[b].push((a, s));
+    }
+    let mut candidates = std::collections::HashSet::new();
+    for (a, list) in neighbors.iter_mut().enumerate() {
+        list.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+        for &(b, _) in list.iter().take(64) {
+            candidates.insert((a.min(b), a.max(b)));
+        }
+    }
+    let mut candidates: Vec<_> = candidates.into_iter().collect();
+    candidates.sort_unstable();
+    let mut cache_key = VERSION.to_le_bytes().to_vec();
+    cache_key.extend_from_slice(&1u32.to_le_bytes()); // Verification algorithm version.
+    for &(a, b) in &candidates {
+        cache_key.extend_from_slice(images[a].content_sha256.as_deref().unwrap_or("").as_bytes());
+        cache_key.extend_from_slice(images[b].content_sha256.as_deref().unwrap_or("").as_bytes());
+    }
+    let cache_file = cache.cache_dir().join(format!(
+        "registered_pairs_{}.bin",
+        crate::fingerprint::sha256_hex(&cache_key)
+    ));
+    if !cancel.load(Ordering::Relaxed)
+        && fs::metadata(&cache_file).is_ok_and(|m| m.len() <= 64 * 1024 * 1024)
+    {
+        if let Ok(bytes) = fs::read(&cache_file) {
+            if bytes.len() >= 8
+                && u64::from_le_bytes(bytes[..8].try_into().unwrap()) == candidates.len() as u64
+            {
+                if let Ok(entries) = bincode::DefaultOptions::new()
+                    .with_fixint_encoding()
+                    .with_limit(64 * 1024 * 1024)
+                    .deserialize::<Vec<Option<LocalEvidence>>>(&bytes)
+                {
+                    if entries.len() == candidates.len() {
+                        return candidates
+                            .into_iter()
+                            .zip(entries)
+                            .filter_map(|(k, v)| v.map(|v| (k, v)))
+                            .collect();
+                    }
+                }
+            }
+        }
+    }
+    let result: LocalEvidenceMap = candidates
+        .par_iter()
+        .filter_map(|&(a, b)| {
+            if cancel.load(Ordering::Relaxed) {
+                return None;
+            }
+            let (Some(sa), Some(sb)) = (&signatures[a], &signatures[b]) else {
+                return None;
+            };
+            Some(((a, b), compare(sa, sb)))
+        })
+        .collect();
+    if !cancel.load(Ordering::Relaxed) {
+        let entries: Vec<_> = candidates.iter().map(|k| result.get(k).cloned()).collect();
+        if let Ok(bytes) = bincode::serialize(&entries) {
+            let _ = fs::write(cache_file, bytes);
+        }
+    }
+    result
+}
+
 fn random(state: &mut u64) -> u64 {
     *state ^= *state << 13;
     *state ^= *state >> 7;
