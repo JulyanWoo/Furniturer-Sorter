@@ -196,6 +196,7 @@ impl FurnitureSorterApp {
                             0.92
                         }
                     }
+                    AnalysisProgress::VerifyingSharedDetails => 0.91,
                     AnalysisProgress::BuildingGroups => 0.96,
                     AnalysisProgress::Ready => 1.0,
                 };

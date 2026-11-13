@@ -2,7 +2,7 @@ use crate::cache::{
     CacheStore, CachedEntry, LibraryCache, is_entry_valid_for_image, normalize_cache_key,
     valid_embedding_for_image,
 };
-use crate::clustering::{ClusteringConfig, ClusteringOutput, cluster_images};
+use crate::clustering::{ClusteringConfig, ClusteringOutput};
 use crate::embeddings::onnx::{OnnxEncoder, detect_onnx_status};
 use crate::embeddings::{ImageFeatures, OnnxModelStatus};
 use crate::evaluation::ProcessingTimingsMs;
@@ -25,6 +25,7 @@ pub enum AnalysisProgress {
     AnalyzingFingerprints { done: usize, total: usize },
     RunningOnnx { done: usize, total: usize },
     CalculatingSimilarities,
+    VerifyingSharedDetails,
     BuildingGroups,
     Ready,
 }
@@ -40,6 +41,7 @@ impl AnalysisProgress {
                 format!("Running optional ONNX embeddings — {done} / {total}")
             }
             Self::CalculatingSimilarities => "Calculating similarities".to_string(),
+            Self::VerifyingSharedDetails => "Verifying shared physical details".to_string(),
             Self::BuildingGroups => "Building groups".to_string(),
             Self::Ready => "Ready".to_string(),
         }
@@ -48,6 +50,14 @@ impl AnalysisProgress {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BenchmarkMetrics {
+    #[serde(default)]
+    pub local_features_ms: u64,
+    #[serde(default)]
+    pub local_matching_ms: u64,
+    #[serde(default)]
+    pub local_candidates: usize,
+    #[serde(default)]
+    pub locally_verified_pairs: usize,
     pub images: usize,
     pub scan_ms: u64,
     pub fingerprint_ms: u64,
@@ -73,6 +83,7 @@ pub struct AnalysisResult {
     pub features: Vec<ImageFeatures>,
     pub pairs: Vec<PairComparison>,
     pub clustering: ClusteringOutput,
+    pub local_identity: crate::local_identity::LocalEvidenceMap,
     pub benchmark: BenchmarkMetrics,
     pub timings_ms: ProcessingTimingsMs,
     pub onnx_status: OnnxModelStatus,
@@ -333,9 +344,46 @@ where
     }
 
     // 5. Clustering
-    on_progress(AnalysisProgress::BuildingGroups);
+    on_progress(AnalysisProgress::VerifyingSharedDetails);
     let cluster_start = Instant::now();
-    let clustering = cluster_images(valid_images.len(), &features, &pairs, cluster_config);
+    let local_start = Instant::now();
+    let local_signatures =
+        pool.install(|| crate::local_identity::load_signatures(&valid_images, cache_store, cancel));
+    let local_features_ms = local_start.elapsed().as_millis() as u64;
+    let missing = local_signatures.iter().filter(|s| s.is_none()).count();
+    if missing > 0 {
+        warnings.push(format!("Local details unavailable for {missing} images; automatic project admission stays conservative."));
+    }
+    let local_match_start = Instant::now();
+    let local_evidence = pool.install(|| {
+        crate::local_identity::candidate_evidence(
+            &valid_images,
+            &local_signatures,
+            &pairs,
+            cache_store,
+            cancel,
+        )
+    });
+    let local_matching_ms = local_match_start.elapsed().as_millis() as u64;
+    if cancel.load(Ordering::Relaxed) {
+        return Err("Local identity verification cancelled by user.".into());
+    }
+    on_progress(AnalysisProgress::BuildingGroups);
+    let human_constraints = if cluster_config.respect_human_corrections {
+        crate::verified_clustering::HumanConstraints::from_labels(
+            &crate::evaluation::load_evaluation_labels(cache_store),
+        )
+    } else {
+        crate::verified_clustering::HumanConstraints::default()
+    };
+    let clustering = crate::verified_clustering::cluster_with_constraints(
+        &valid_images,
+        &features,
+        &pairs,
+        &local_evidence,
+        cluster_config,
+        &human_constraints,
+    );
     let clustering_ms = cluster_start.elapsed().as_millis() as u64;
 
     let total_ms = total_start.elapsed().as_millis() as u64;
@@ -350,9 +398,23 @@ where
     let per_feat_bytes = std::mem::size_of::<ImageFeatures>()
         + (76 + 12 + 96 + 40 + 16) * std::mem::size_of::<f32>()
         + embedding_dim.unwrap_or(0) * std::mem::size_of::<f32>();
-    let approx_feature_memory_kb = (valid_images.len() * per_feat_bytes) / 1024;
+    let local_bytes: usize = local_signatures
+        .iter()
+        .flatten()
+        .map(|s| {
+            std::mem::size_of_val(s)
+                + s.points.len() * std::mem::size_of::<crate::local_identity::LocalPoint>()
+                + s.raster.len()
+                + s.points.iter().map(|p| p.gradients.len()).sum::<usize>()
+        })
+        .sum();
+    let approx_feature_memory_kb = (valid_images.len() * per_feat_bytes + local_bytes) / 1024;
 
     let benchmark = BenchmarkMetrics {
+        local_features_ms,
+        local_matching_ms,
+        local_candidates: local_evidence.len(),
+        locally_verified_pairs: local_evidence.values().filter(|e| e.verified).count(),
         images: valid_images.len(),
         scan_ms,
         fingerprint_ms,
@@ -388,6 +450,7 @@ where
         features,
         pairs,
         clustering,
+        local_identity: local_evidence,
         benchmark,
         timings_ms,
         onnx_status,
