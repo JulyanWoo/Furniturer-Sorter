@@ -1,1 +1,1 @@
-//! Furniture Sorter application modules.
+pub mod sidecar;
