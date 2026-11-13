@@ -1,3 +1,4 @@
+pub mod benchmark;
 pub mod cache;
 pub mod clustering;
 pub mod deterministic;
