@@ -1,0 +1,40 @@
+# Rust build output and native binaries
+/target/
+**/*.rs.bk
+*.pdb
+*.exe
+*.dll
+
+# Optional local model assets
+*.onnx
+/models/*.json
+
+# Generated output, caches and logs
+/Organized/
+/bench_tmp/
+/cache/
+/thumbnails/
+*.log
+*.tmp
+
+# Local documentation, prompts, tests and refinement tools
+*.md
+/prompt_*.txt
+/tests/
+/examples/
+/recovery_review/
+
+# Private labels, datasets and evaluation results
+/evaluation_*.json
+/real_world_*.json
+/human_review_*.json
+/purity_recovery_*.json
+/source_*_recovery.json
+
+# Local editor state and credentials
+/.idea/
+/.vscode/
+/.codex/
+.env
+.env.*
+!.env.example
