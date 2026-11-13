@@ -15,3 +15,5 @@ pub mod ui;
 pub mod purity;
 
 pub mod local_identity;
+
+pub mod verified_clustering;
