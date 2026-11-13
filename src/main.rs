@@ -26,7 +26,7 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 820.0])
             .with_min_inner_size([900.0, 620.0])
-            .with_title("Furniture Sorter"),
+            .with_title("Furniture Sorter - Verified Details"),
         ..Default::default()
     };
 
