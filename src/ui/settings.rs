@@ -48,17 +48,17 @@ pub fn show_settings(app: &mut FurnitureSorterApp, root_ui: &mut egui::Ui) {
                 }
 
                 left.add_space(12.0);
-                left.heading("Clustering & Hybrid Thresholds");
-                left.label("Purity first: automatic group merging is OFF");
+                left.heading("Project grouping");
+                left.label("Shared physical details must agree across independent views.");
+                left.label("Automatic group merging is OFF. Suggestions require review.");
+                left.checkbox(&mut app.cluster_config.respect_human_corrections, "Keep confirmed project corrections");
                 egui::CollapsingHeader::new("Advanced group admission").show(left, |ui| {
                     let a = &mut app.cluster_config.admission;
                     ui.add(egui::Slider::new(&mut a.majority_fraction, 0.60..=1.0).text("Member agreement fraction"));
-                    ui.add(egui::Slider::new(&mut a.minimum_consensus, 0.65..=0.95).text("Group consensus"));
-                    ui.add(egui::Slider::new(&mut a.minimum_geometry, 0.60..=0.95).text("Geometry consistency"));
-                    ui.add(egui::Slider::new(&mut a.minimum_local_layout, 0.60..=0.95).text("Local layout consistency"));
-                    ui.add(egui::Slider::new(&mut a.minimum_material, 0.50..=0.95).text("Material consistency"));
-                    ui.add(egui::Slider::new(&mut a.maximum_contradiction, 0.0..=0.28).text("Maximum contradiction"));
+                    ui.label("Copies of the same viewpoint count as one vote.");
                 });
+                egui::CollapsingHeader::new("Retrieval and comparison scores").show(left, |left| {
+                left.label("These scores retrieve candidates; they do not establish project membership.");
                 left.add(
                     egui::Slider::new(&mut app.cluster_config.same_project_threshold, 0.50..=0.95)
                         .text("Same-project threshold"),
@@ -69,14 +69,6 @@ pub fn show_settings(app: &mut FurnitureSorterApp, root_ui: &mut egui::Ui) {
                         .text("Review threshold"),
                 );
                 app.sim_config.review_threshold = app.cluster_config.review_threshold;
-                left.add(
-                    egui::Slider::new(&mut app.cluster_config.cluster_min_pairwise, 0.35..=0.85)
-                        .text("Anti-chaining min pairwise"),
-                );
-                left.add(
-                    egui::Slider::new(&mut app.cluster_config.cluster_avg_threshold, 0.50..=0.90)
-                        .text("Cluster avg consistency"),
-                );
                 left.add(
                     egui::Slider::new(&mut app.sim_config.ambiguous_low, 0.20..=0.65)
                         .text("ONNX ambiguous low"),
@@ -93,6 +85,7 @@ pub fn show_settings(app: &mut FurnitureSorterApp, root_ui: &mut egui::Ui) {
                     egui::Slider::new(&mut app.sim_config.embedding_blend, 0.0..=1.0)
                         .text("Hybrid Embedding weight"),
                 );
+                });
 
                 let right = &mut cols[1];
                 right.heading("Performance, Cache & ONNX");
