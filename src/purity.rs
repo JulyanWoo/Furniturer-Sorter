@@ -21,7 +21,7 @@ pub struct AdmissionConfig {
 impl Default for AdmissionConfig {
     fn default() -> Self {
         Self {
-            majority_fraction: 0.67,
+            majority_fraction: 2.0 / 3.0,
             minimum_consensus: 0.72,
             minimum_geometry: 0.68,
             minimum_local_layout: 0.68,
