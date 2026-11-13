@@ -10,3 +10,4 @@ pub mod purity;
 pub mod scanner;
 pub mod sidecar;
 pub mod similarity;
+pub mod ui;
