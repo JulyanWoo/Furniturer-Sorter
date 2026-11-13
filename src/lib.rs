@@ -1,3 +1,4 @@
+pub mod app;
 pub mod benchmark;
 pub mod cache;
 pub mod clustering;
@@ -6,8 +7,9 @@ pub mod embeddings;
 pub mod evaluation;
 pub mod fingerprint;
 pub mod organizer;
-pub mod purity;
 pub mod scanner;
 pub mod sidecar;
 pub mod similarity;
 pub mod ui;
+
+pub mod purity;

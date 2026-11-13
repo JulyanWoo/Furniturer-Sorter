@@ -1,3 +1,8 @@
+pub mod gallery;
+pub mod home;
+pub mod review;
+pub mod settings;
+
 use crate::cache::CacheStore;
 use crate::fingerprint::load_oriented_thumbnail;
 use crate::scanner::ScannedImage;
