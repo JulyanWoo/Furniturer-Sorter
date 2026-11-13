@@ -1,7 +1,9 @@
 pub mod cache;
+pub mod clustering;
 pub mod deterministic;
 pub mod embeddings;
 pub mod fingerprint;
+pub mod purity;
 pub mod scanner;
 pub mod sidecar;
 pub mod similarity;
